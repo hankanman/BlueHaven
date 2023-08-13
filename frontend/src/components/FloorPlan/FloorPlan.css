@@ -1,0 +1,7 @@
+/* src/components/FloorPlan/FloorPlan.css */
+canvas {
+    border: 1px solid black;
+    cursor: crosshair;
+    width: 800px; /* Set the width of the canvas */
+    height: 600px; /* Set the height of the canvas */
+  }
