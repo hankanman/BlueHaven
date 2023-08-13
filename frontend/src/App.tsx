@@ -2,16 +2,14 @@
 import React from 'react';
 import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';
 import MainLayout from './layout/MainLayout';
+import FloorPlanPage from './components/FloorPlanPage'; // Import the FloorPlanPage component
 
 const App: React.FC = () => {
   return (
     <Router>
       <MainLayout>
         <Switch>
-          {/* Add your routes here */}
-          <Route path="/" exact>
-            {/* Your home component */}
-          </Route>
+          <Route path="/floorplan" exact component={FloorPlanPage} /> {/* Add the route for the Floor Plan page */}
           {/* Other routes */}
         </Switch>
       </MainLayout>
