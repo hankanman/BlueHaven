@@ -1,30 +1,59 @@
 // src/components/FloorPlan/FloorPlan.tsx
 import React, { useRef, useState, useEffect } from "react";
-import "./FloorPlan.css"; // Import the CSS file
+import "./FloorPlan.css";
 
-type Tower = {
-  x: number;
-  y: number;
-  // Additional properties for the tower (e.g., ID, configuration)
-};
-
-// Define the Room type outside the component
+type Tower = { x: number; y: number };
 type Room = {
   vertices: { x: number; y: number }[];
   lengths: number[];
-  label: string; // Label for the room
+  label: string;
 };
 
 const FloorPlan: React.FC = () => {
-  const [placingTower, setPlacingTower] = useState<boolean>(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [placingTower, setPlacingTower] = useState(false);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [drawingRoom, setDrawingRoom] = useState(false);
+
   const [currentRoom, setCurrentRoom] = useState<{ x: number; y: number }[]>(
     []
   );
   const [selectedRoomIndex, setSelectedRoomIndex] = useState<number | null>(
     null
   );
+  const [towers, setTowers] = useState<Tower[]>([]);
+
+  const renderModeIndicator = () => {
+    let modeText = "Normal Mode";
+    if (placingTower) {
+      modeText = "Tower Placement Mode";
+    } else if (drawingRoom) {
+      modeText = "Room Drawing Mode";
+    }
+    return <div className="mode-indicator">{modeText}</div>;
+  };
+
+  const getCanvasCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+    return { x: 0, y: 0 };
+  };
+
+  const calculateLength = (vertices: { x: number; y: number }[]) => {
+    const lengths: number[] = [];
+    for (let i = 0; i < vertices.length; i++) {
+      const vertex = vertices[i];
+      const nextVertex = vertices[(i + 1) % vertices.length];
+      const length = Math.sqrt(
+        (nextVertex.x - vertex.x) ** 2 + (nextVertex.y - vertex.y) ** 2
+      );
+      lengths.push(length);
+    }
+    return lengths;
+  };
 
   // Function to handle changes to length inputs
   const handleLengthChange = (sideIndex: number, newLength: number) => {
@@ -35,12 +64,6 @@ const FloorPlan: React.FC = () => {
       updatedRooms[selectedRoomIndex] = updatedRoom;
       setRooms(updatedRooms);
     }
-  };
-  // Function to handle tower placement (e.g., on mouse click)
-  const handleTowerPlacement = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const x = e.clientX;
-    const y = e.clientY;
-    setTowers([...towers, { x, y }]);
   };
   // Function to select a room
   const handleRoomClick = (roomIndex: number) => {
@@ -56,11 +79,16 @@ const FloorPlan: React.FC = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear previous drawings
         renderRooms(); // Render existing rooms
 
-        // Draw the current edge
-        const lastVertex = currentRoom[currentRoom.length - 1];
+        // Get canvas coordinates
+        const { x, y } = getCanvasCoordinates(e);
+
+        // Draw the current room
         ctx.beginPath();
-        ctx.moveTo(lastVertex.x, lastVertex.y);
-        ctx.lineTo(e.clientX, e.clientY);
+        ctx.moveTo(currentRoom[0].x, currentRoom[0].y);
+        currentRoom.slice(1).forEach((vertex) => {
+          ctx.lineTo(vertex.x, vertex.y);
+        });
+        ctx.lineTo(x, y); // Draw line to the current mouse position
         ctx.stroke();
       }
     }
@@ -68,100 +96,131 @@ const FloorPlan: React.FC = () => {
 
   // Function to handle mouse up event (finalize the current room, optional)
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (currentRoom.length < 3) return; // Need at least 3 vertices to form a polygon
+    if (drawingRoom) {
+      if (currentRoom.length < 3) return;
 
-    // Finalize the current room
-    const newRoom: Room = {
-      vertices: currentRoom,
-      lengths: [], // Lengths can be defined later or calculated based on vertices
-      label: "", // Initialize label as an empty string or provide a default label
-    };
-    setRooms([...rooms, newRoom]);
-    setCurrentRoom([]); // Reset the current room
+      const { x, y } = getCanvasCoordinates(e);
+      const distanceToStart = Math.sqrt(
+        (currentRoom[0].x - x) ** 2 + (currentRoom[0].y - y) ** 2
+      );
+      const snapDistance = 20; // Threshold distance for snapping (in pixels)
+      if (distanceToStart < snapDistance) {
+        // Remove the last vertex if it is a duplicate
+        const vertices = currentRoom;
+
+        const newRoom: Room = {
+          vertices: vertices,
+          lengths: calculateLength(vertices),
+          label: `Room ${rooms.length + 1}`,
+        };
+
+        setRooms([...rooms, newRoom]);
+        setCurrentRoom([]);
+        setDrawingRoom(false); // Reset drawing state
+      }
+    }
   };
 
   // Function to handle mouse down event (start drawing a new vertex)
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    let x = e.clientX;
-    let y = e.clientY;
+    if (!drawingRoom) return; // Skip if not in drawing room mode
+    let { x, y } = getCanvasCoordinates(e);
 
-    // Check for snapping with existing vertices
-    const snapDistance = 10; // Threshold distance for snapping (in pixels)
-    rooms.forEach((room) => {
-      const snapThreshold = 10; // Threshold distance for snapping (in pixels)
-      rooms.forEach((room) => {
-        room.vertices.forEach((vertex) => {
-          const distance = Math.sqrt((vertex.x - x) ** 2 + (vertex.y - y) ** 2);
-          if (distance < snapThreshold) {
-            x = vertex.x; // Snap to the existing vertex
-            y = vertex.y;
-          }
-        });
-      });
-      room.vertices.forEach((vertex) => {
-        const distance = Math.sqrt((vertex.x - x) ** 2 + (vertex.y - y) ** 2);
-        if (distance < snapDistance) {
-          x = vertex.x; // Snap to the existing vertex
-          y = vertex.y;
-        }
-      });
-    });
+    // If currentRoom has more than 2 vertices, check for snapping to the first vertex
+    if (currentRoom.length > 2) {
+      const distanceToStart = Math.sqrt(
+        (currentRoom[0].x - x) ** 2 + (currentRoom[0].y - y) ** 2
+      );
+      const snapDistance = 20; // Threshold distance for snapping (in pixels)
+      if (distanceToStart < snapDistance) {
+        handleMouseUp(e); // Finalize the room if clicked near the starting vertex
+        return;
+      }
+    }
 
     setCurrentRoom([...currentRoom, { x, y }]);
   };
 
   // Function to handle mouse click on the canvas
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const x = e.clientX;
-    const y = e.clientY;
+    const { x, y } = getCanvasCoordinates(e);
+
     if (placingTower) {
       setTowers([...towers, { x, y }]);
       setPlacingTower(false); // Exit tower placement mode
+    } else if (drawingRoom) {
+      // Handle room drawing logic here if needed
+    } else {
+      rooms.forEach((room, index) => {
+        if (isPointInsideRoom(x, y, room)) {
+          handleRoomClick(index);
+          setSelectedRoomIndex(index);
+        }
+      });
     }
-
-    rooms.forEach((room, index) => {
-      if (isPointInsideRoom(x, y, room)) {
-        // Use x and y here
-        setSelectedRoomIndex(index);
-      }
-    });
   };
 
   // Function to check if a point is inside a room (can use a library or custom logic)
   const isPointInsideRoom = (x: number, y: number, room: Room) => {
-    // Implement logic to check if the point (x, y) is inside the room
-    // This can be done using a point-in-polygon algorithm
-    return true;
+    let inside = false;
+    for (
+      let i = 0, j = room.vertices.length - 1;
+      i < room.vertices.length;
+      j = i++
+    ) {
+      const xi = room.vertices[i].x,
+        yi = room.vertices[i].y;
+      const xj = room.vertices[j].x,
+        yj = room.vertices[j].y;
+
+      const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi); // prettier-ignore
+
+      if (intersect) inside = !inside;
+    }
+
+    return inside;
   };
 
-  const [towers, setTowers] = useState<Tower[]>([]);
   const renderRooms = () => {
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext("2d");
       if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas first
+
         towers.forEach((tower) => {
           ctx.beginPath();
           ctx.arc(tower.x, tower.y, 10, 0, 2 * Math.PI); // Draw a circle for the tower
           ctx.fillStyle = "blue";
           ctx.fill();
         });
-        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
 
         // Iterate through the rooms and draw each one
         rooms.forEach((room, roomIndex) => {
-          // Include roomIndex as the second parameter
-          ctx.strokeStyle = roomIndex === selectedRoomIndex ? "red" : "black"; // Highlight the selected room
+          // Draw the room
+          ctx.strokeStyle = roomIndex === selectedRoomIndex ? "red" : "black";
           ctx.beginPath();
           room.vertices.forEach((vertex, index) => {
             if (index === 0) {
-              ctx.moveTo(vertex.x, vertex.y); // Move to the first vertex
+              ctx.moveTo(vertex.x, vertex.y);
             } else {
-              ctx.lineTo(vertex.x, vertex.y); // Draw lines to subsequent vertices
+              ctx.lineTo(vertex.x, vertex.y);
             }
           });
-          ctx.closePath(); // Close the path to create a polygon
-          ctx.stroke(); // Stroke the path to draw the lines
+          ctx.closePath();
+          ctx.stroke();
+
+          // Draw the lengths of the sides
+          room.vertices.forEach((vertex, index) => {
+            const nextVertex =
+              room.vertices[(index + 1) % room.vertices.length];
+            const midX = (vertex.x + nextVertex.x) / 2;
+            const midY = (vertex.y + nextVertex.y) / 2;
+            const length = room.lengths[index].toFixed(2);
+            ctx.fillStyle = "black";
+            ctx.font = "12px Arial";
+            ctx.fillText(length, midX, midY);
+          });
         });
       }
     }
@@ -173,20 +232,50 @@ const FloorPlan: React.FC = () => {
       setRooms(updatedRooms);
     }
   };
-
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    // Reset the state
+    setRooms([]);
+    setTowers([]);
+    setCurrentRoom([]);
+    setSelectedRoomIndex(null);
+  };
   // Call renderRooms inside a useEffect to ensure it runs when rooms change
   useEffect(() => {
+    console.log(rooms, towers);
     renderRooms();
-  }, [rooms]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rooms, towers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
-      <button onClick={() => setPlacingTower(true)}>Place Tower</button>
+      {renderModeIndicator()}
+      <button
+        onClick={() => setPlacingTower(true)}
+        className={placingTower ? "active-button" : ""}
+      >
+        Place Tower
+      </button>
+      <button
+        onClick={() => setDrawingRoom(!drawingRoom)}
+        className={drawingRoom ? "active-button" : ""}
+      >
+        {drawingRoom ? "Stop Drawing Room" : "Draw Room"}
+      </button>
+      <button onClick={clearCanvas}>Clear Canvas</button>
       <canvas
         ref={canvasRef}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
+        onClick={handleCanvasClick}
+        width={800}
+        height={600}
       />
       {selectedRoomIndex !== null && (
         <div>
