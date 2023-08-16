@@ -1,5 +1,13 @@
 // src/components/FloorPlan/FloorPlan.tsx
 import React, { useRef, useState, useEffect } from "react";
+import ModeIndicator from "./ModeIndicator";
+import Toolbar from "./Toolbar";
+import {
+  calculateLength,
+  isPointInsideRoom,
+  isPointNearEdge,
+  adjustRoomVertices,
+} from "./utilities";
 import "./FloorPlan.css";
 
 type Tower = { x: number; y: number };
@@ -14,24 +22,12 @@ const FloorPlan: React.FC = () => {
   const [placingTower, setPlacingTower] = useState(false);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [drawingRoom, setDrawingRoom] = useState(false);
-
-  const [currentRoom, setCurrentRoom] = useState<{ x: number; y: number }[]>(
-    []
-  );
-  const [selectedRoomIndex, setSelectedRoomIndex] = useState<number | null>(
-    null
-  );
+  const [potentialVertex, setPotentialVertex] = useState<{roomIndex: number, edgeIndex: number, position: {x: number, y: number}} | null>(null); // prettier-ignore
+  const [hoveredVertex, setHoveredVertex] = useState<{roomIndex: number; vertexIndex: number;} | null>(null); // prettier-ignore
+  const [draggingVertex, setDraggingVertex] = useState<{roomIndex: number; vertexIndex: number;} | null>(null); // prettier-ignore
+  const [currentRoom, setCurrentRoom] = useState<{ x: number; y: number }[]>([]); // prettier-ignore
+  const [selectedRoomIndex, setSelectedRoomIndex] = useState<number | null>(null); // prettier-ignore
   const [towers, setTowers] = useState<Tower[]>([]);
-
-  const renderModeIndicator = () => {
-    let modeText = "Normal Mode";
-    if (placingTower) {
-      modeText = "Tower Placement Mode";
-    } else if (drawingRoom) {
-      modeText = "Room Drawing Mode";
-    }
-    return <div className="mode-indicator">{modeText}</div>;
-  };
 
   const getCanvasCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -42,19 +38,10 @@ const FloorPlan: React.FC = () => {
     return { x: 0, y: 0 };
   };
 
-  const calculateLength = (vertices: { x: number; y: number }[]) => {
-    const lengths: number[] = [];
-    for (let i = 0; i < vertices.length; i++) {
-      const vertex = vertices[i];
-      const nextVertex = vertices[(i + 1) % vertices.length];
-      const length = Math.sqrt(
-        (nextVertex.x - vertex.x) ** 2 + (nextVertex.y - vertex.y) ** 2
-      );
-      lengths.push(length);
-    }
-    return lengths;
+  // Function to select a room
+  const handleRoomClick = (roomIndex: number) => {
+    setSelectedRoomIndex(roomIndex);
   };
-
   // Function to handle changes to length inputs
   const handleLengthChange = (sideIndex: number, newLength: number) => {
     if (selectedRoomIndex !== null) {
@@ -63,25 +50,69 @@ const FloorPlan: React.FC = () => {
       const updatedRooms = [...rooms];
       updatedRooms[selectedRoomIndex] = updatedRoom;
       setRooms(updatedRooms);
+
+      adjustRoomVertices(updatedRoom, sideIndex);
     }
-  };
-  // Function to select a room
-  const handleRoomClick = (roomIndex: number) => {
-    setSelectedRoomIndex(roomIndex);
   };
   // Function to handle mouse move event (draw the current edge)
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const { x, y } = getCanvasCoordinates(e);
+
+    // If a vertex is being dragged, update its position
+    if (draggingVertex) {
+      const updatedRooms = [...rooms];
+      const room = updatedRooms[draggingVertex.roomIndex];
+      room.vertices[draggingVertex.vertexIndex] = { x, y };
+
+      // Recalculate lengths
+      room.lengths = calculateLength(room.vertices);
+
+      setRooms(updatedRooms);
+      return; // Exit the function if a vertex is being dragged
+    } else {
+      let nearVertex = null;
+      for (let roomIndex = 0; roomIndex < rooms.length; roomIndex++) {
+        const room = rooms[roomIndex];
+        for (
+          let vertexIndex = 0;
+          vertexIndex < room.vertices.length;
+          vertexIndex++
+        ) {
+          const vertex = room.vertices[vertexIndex];
+          const distance = Math.sqrt((vertex.x - x) ** 2 + (vertex.y - y) ** 2);
+          if (distance < 20) {
+            nearVertex = { roomIndex, vertexIndex };
+            break;
+          }
+        }
+        if (nearVertex) break;
+      }
+      setHoveredVertex(nearVertex);
+    }
+
+    let potentialSpot = null;
+    for (let roomIndex = 0; roomIndex < rooms.length; roomIndex++) {
+      const room = rooms[roomIndex];
+      for (let edgeIndex = 0; edgeIndex < room.vertices.length; edgeIndex++) {
+        const startVertex = room.vertices[edgeIndex];
+        const endVertex = room.vertices[(edgeIndex + 1) % room.vertices.length];
+
+        if (isPointNearEdge(x, y, startVertex, endVertex)) {
+          potentialSpot = { roomIndex, edgeIndex, position: { x, y } };
+          break;
+        }
+      }
+      if (potentialSpot) break;
+    }
+    setPotentialVertex(potentialSpot);
+
     if (currentRoom.length === 0) return;
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear previous drawings
-        renderRooms(); // Render existing rooms
-
-        // Get canvas coordinates
-        const { x, y } = getCanvasCoordinates(e);
-
+        renderRooms(); // Render existing rooms and towers
         // Draw the current room
         ctx.beginPath();
         ctx.moveTo(currentRoom[0].x, currentRoom[0].y);
@@ -96,6 +127,28 @@ const FloorPlan: React.FC = () => {
 
   // Function to handle mouse up event (finalize the current room, optional)
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (draggingVertex) {
+      const { x, y } = getCanvasCoordinates(e);
+      const updatedRooms = [...rooms];
+      const room = updatedRooms[draggingVertex.roomIndex];
+
+      // Check for nearby vertices (other than the one being dragged)
+      for (const otherRoom of rooms) {
+        for (const vertex of otherRoom.vertices) {
+          const distance = Math.sqrt((vertex.x - x) ** 2 + (vertex.y - y) ** 2);
+          if (distance < 20) {
+            room.vertices[draggingVertex.vertexIndex] = vertex; // Snap the vertex
+            // Recalculate lengths
+            room.lengths = calculateLength(room.vertices);
+            break;
+          }
+        }
+      }
+
+      setRooms(updatedRooms);
+      setDraggingVertex(null); // Reset the dragging state
+      return; // Exit the function if a vertex was dragged
+    }
     if (drawingRoom) {
       if (currentRoom.length < 3) return;
 
@@ -137,6 +190,34 @@ const FloorPlan: React.FC = () => {
         return;
       }
     }
+    // Check if any vertex is clicked
+    for (let roomIndex = 0; roomIndex < rooms.length; roomIndex++) {
+      const room = rooms[roomIndex];
+      for (
+        let vertexIndex = 0;
+        vertexIndex < room.vertices.length;
+        vertexIndex++
+      ) {
+        const vertex = room.vertices[vertexIndex];
+        const distance = Math.sqrt((vertex.x - x) ** 2 + (vertex.y - y) ** 2);
+        if (distance < 10) {
+          // Assuming 10 pixels as the click radius for a vertex
+          setDraggingVertex({ roomIndex, vertexIndex });
+          return; // Exit the function if a vertex is clicked
+        }
+      }
+    }
+    if (potentialVertex) {
+      const updatedRooms = [...rooms];
+      const room = updatedRooms[potentialVertex.roomIndex];
+      room.vertices.splice(
+        potentialVertex.edgeIndex + 1,
+        0,
+        potentialVertex.position
+      );
+      setRooms(updatedRooms);
+      setPotentialVertex(null);
+    }
 
     setCurrentRoom([...currentRoom, { x, y }]);
   };
@@ -159,33 +240,17 @@ const FloorPlan: React.FC = () => {
       });
     }
   };
-
-  // Function to check if a point is inside a room (can use a library or custom logic)
-  const isPointInsideRoom = (x: number, y: number, room: Room) => {
-    let inside = false;
-    for (
-      let i = 0, j = room.vertices.length - 1;
-      i < room.vertices.length;
-      j = i++
-    ) {
-      const xi = room.vertices[i].x,
-        yi = room.vertices[i].y;
-      const xj = room.vertices[j].x,
-        yj = room.vertices[j].y;
-
-      const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi); // prettier-ignore
-
-      if (intersect) inside = !inside;
-    }
-
-    return inside;
-  };
-
-  const renderRooms = () => {
+  function renderRooms() {
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext("2d");
       if (ctx) {
+        if (potentialVertex) {
+          ctx.beginPath();
+          ctx.arc(potentialVertex.position.x, potentialVertex.position.y, 8, 0, 2 * Math.PI); // prettier-ignore
+          ctx.fillStyle = "rgba(0, 255, 0, 0.5)";
+          ctx.fill();
+        }
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas first
 
         towers.forEach((tower) => {
@@ -216,15 +281,28 @@ const FloorPlan: React.FC = () => {
               room.vertices[(index + 1) % room.vertices.length];
             const midX = (vertex.x + nextVertex.x) / 2;
             const midY = (vertex.y + nextVertex.y) / 2;
-            const length = room.lengths[index].toFixed(2);
+            const length = room.lengths[index]
+              ? room.lengths[index].toFixed(2)
+              : "N/A";
             ctx.fillStyle = "black";
             ctx.font = "12px Arial";
-            ctx.fillText(length, midX, midY);
+            ctx.fillText(index + 1 + ": " + length, midX, midY);
+          });
+          room.vertices.forEach((vertex, vertexIndex) => {
+            ctx.beginPath();
+            ctx.arc(vertex.x, vertex.y, hoveredVertex && hoveredVertex.roomIndex === roomIndex && hoveredVertex.vertexIndex === vertexIndex ? 8 : 5, 0, 2 * Math.PI); // prettier-ignore
+            ctx.fillStyle =
+              hoveredVertex &&
+              hoveredVertex.roomIndex === roomIndex &&
+              hoveredVertex.vertexIndex === vertexIndex
+                ? "red"
+                : "blue";
+            ctx.fill();
           });
         });
       }
     }
-  };
+  }
   const handleLabelChange = (newLabel: string) => {
     if (selectedRoomIndex !== null) {
       const updatedRooms = [...rooms];
@@ -254,20 +332,15 @@ const FloorPlan: React.FC = () => {
 
   return (
     <div>
-      {renderModeIndicator()}
-      <button
-        onClick={() => setPlacingTower(true)}
-        className={placingTower ? "active-button" : ""}
-      >
-        Place Tower
-      </button>
-      <button
-        onClick={() => setDrawingRoom(!drawingRoom)}
-        className={drawingRoom ? "active-button" : ""}
-      >
-        {drawingRoom ? "Stop Drawing Room" : "Draw Room"}
-      </button>
-      <button onClick={clearCanvas}>Clear Canvas</button>
+      <ModeIndicator placingTower={placingTower} drawingRoom={drawingRoom} />
+      <Toolbar
+        placingTower={placingTower}
+        drawingRoom={drawingRoom}
+        onToggleTowerMode={() => setPlacingTower(true)}
+        onToggleRoomDrawing={() => setDrawingRoom(!drawingRoom)}
+        onClearCanvas={clearCanvas}
+      />
+      <br></br>
       <canvas
         ref={canvasRef}
         onMouseDown={handleMouseDown}
@@ -286,23 +359,19 @@ const FloorPlan: React.FC = () => {
             value={rooms[selectedRoomIndex].label}
             onChange={(e) => handleLabelChange(e.target.value)}
           />
-          {selectedRoomIndex !== null && (
-            <div>
-              {rooms[selectedRoomIndex].lengths.map((length, index) => (
-                <div key={index}>
-                  <label>Side {index + 1} Length:</label>
-                  <input
-                    placeholder="length"
-                    type="number"
-                    value={length}
-                    onChange={(e) =>
-                      handleLengthChange(index, parseFloat(e.target.value))
-                    }
-                  />
-                </div>
-              ))}
+          {rooms[selectedRoomIndex].lengths.map((length, index) => (
+            <div key={index}>
+              <label>Side {index + 1} Length:</label>
+              <input
+                placeholder="length"
+                type="number"
+                value={length}
+                onChange={(e) =>
+                  handleLengthChange(index, parseFloat(e.target.value))
+                }
+              />
             </div>
-          )}
+          ))}
         </div>
       )}
       {/* Other components and elements can be added here */}
