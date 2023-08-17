@@ -1,0 +1,40 @@
+.container {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+  color: var(--text-color);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background-color: var(--menu-color);
+  color: var(--text-color);
+}
+
+.logo {
+  margin: 0;
+  font-size: 2rem;
+  color: var(--text-color);
+}
+
+.nav {
+  display: flex;
+  gap: 1rem;
+  color: var(--text-color);
+}
+
+.main {
+  padding: 1rem;
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 4rem;
+  color: var(--text-color);
+  background-color: var(--menu-color);
+}

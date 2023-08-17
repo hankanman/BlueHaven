@@ -7,18 +7,31 @@ import {
   isPointInsideRoom,
   isPointNearEdge,
   adjustRoomVertices,
+  getRandomColor,
 } from "./utilities";
-import "./FloorPlan.css";
+import "./FloorPlan.css" // Import the CSS file
 
-type Tower = { x: number; y: number };
+type Tower = {
+  x: number;
+  y: number;
+  color: string;
+  width: number;
+  height: number;
+};
 type Room = {
   vertices: { x: number; y: number }[];
   lengths: number[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
   label: string;
+  color: string;
 };
 
 const FloorPlan: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [placingTower, setPlacingTower] = useState(false);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [drawingRoom, setDrawingRoom] = useState(false);
@@ -165,6 +178,11 @@ const FloorPlan: React.FC = () => {
           vertices: vertices,
           lengths: calculateLength(vertices),
           label: `Room ${rooms.length + 1}`,
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+          color: getRandomColor(),
         };
 
         setRooms([...rooms, newRoom]);
@@ -223,11 +241,19 @@ const FloorPlan: React.FC = () => {
   };
 
   // Function to handle mouse click on the canvas
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const { x, y } = getCanvasCoordinates(e);
+  const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const { x, y } = getCanvasCoordinates(event);
 
     if (placingTower) {
-      setTowers([...towers, { x, y }]);
+      // Handle tower placement
+      const newTower = {
+        x,
+        y,
+        width: 20,
+        height: 20,
+        color: getRandomColor(),
+      };
+      setTowers([...towers, newTower]);
       setPlacingTower(false); // Exit tower placement mode
     } else if (drawingRoom) {
       // Handle room drawing logic here if needed
@@ -243,6 +269,11 @@ const FloorPlan: React.FC = () => {
   function renderRooms() {
     const canvas = canvasRef.current;
     if (canvas) {
+      const canvasContainer = canvas.parentElement;
+      if (canvasContainer) {
+        canvas.width = canvasContainer.clientWidth;
+        canvas.height = canvasContainer.clientHeight;
+      }
       const ctx = canvas.getContext("2d");
       if (ctx) {
         if (potentialVertex) {
@@ -256,14 +287,14 @@ const FloorPlan: React.FC = () => {
         towers.forEach((tower) => {
           ctx.beginPath();
           ctx.arc(tower.x, tower.y, 10, 0, 2 * Math.PI); // Draw a circle for the tower
-          ctx.fillStyle = "blue";
+          ctx.fillStyle = "white";
           ctx.fill();
         });
 
         // Iterate through the rooms and draw each one
         rooms.forEach((room, roomIndex) => {
           // Draw the room
-          ctx.strokeStyle = roomIndex === selectedRoomIndex ? "red" : "black";
+          ctx.strokeStyle = roomIndex === selectedRoomIndex ? "aqua" : "white";
           ctx.beginPath();
           room.vertices.forEach((vertex, index) => {
             if (index === 0) {
@@ -277,26 +308,18 @@ const FloorPlan: React.FC = () => {
 
           // Draw the lengths of the sides
           room.vertices.forEach((vertex, index) => {
-            const nextVertex =
-              room.vertices[(index + 1) % room.vertices.length];
+            const nextVertex = room.vertices[(index + 1) % room.vertices.length]; // prettier-ignore
             const midX = (vertex.x + nextVertex.x) / 2;
             const midY = (vertex.y + nextVertex.y) / 2;
-            const length = room.lengths[index]
-              ? room.lengths[index].toFixed(2)
-              : "N/A";
-            ctx.fillStyle = "black";
+            const length = room.lengths[index] ? room.lengths[index].toFixed(2) : "N/A"; // prettier-ignore
+            ctx.fillStyle = "white";
             ctx.font = "12px Arial";
             ctx.fillText(index + 1 + ": " + length, midX, midY);
           });
           room.vertices.forEach((vertex, vertexIndex) => {
             ctx.beginPath();
             ctx.arc(vertex.x, vertex.y, hoveredVertex && hoveredVertex.roomIndex === roomIndex && hoveredVertex.vertexIndex === vertexIndex ? 8 : 5, 0, 2 * Math.PI); // prettier-ignore
-            ctx.fillStyle =
-              hoveredVertex &&
-              hoveredVertex.roomIndex === roomIndex &&
-              hoveredVertex.vertexIndex === vertexIndex
-                ? "red"
-                : "blue";
+            ctx.fillStyle = hoveredVertex && hoveredVertex.roomIndex === roomIndex && hoveredVertex.vertexIndex === vertexIndex ? "red" : "blue"; // prettier-ignore
             ctx.fill();
           });
         });
@@ -325,14 +348,30 @@ const FloorPlan: React.FC = () => {
     setSelectedRoomIndex(null);
   };
   // Call renderRooms inside a useEffect to ensure it runs when rooms change
+  const handleResize = () => {
+    if (canvasRef.current) {
+      const canvasContainer = canvasRef.current.parentElement;
+      const width = canvasContainer ? canvasContainer.clientWidth : 0;
+      const height = canvasContainer ? width : 0;
+      setCanvasSize({ width, height });
+    }
+  };
   useEffect(() => {
-    console.log(rooms, towers);
+    // Call renderRooms inside a useEffect to ensure it runs when rooms change
     renderRooms();
-  }, [rooms, towers]); // eslint-disable-line react-hooks/exhaustive-deps
-
+  }, [rooms, towers, canvasSize]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
   return (
-    <div>
+    <div className="floor-plan">
+      {/* Display the mode indicator */}
       <ModeIndicator placingTower={placingTower} drawingRoom={drawingRoom} />
+
+      {/* Display the toolbar */}
       <Toolbar
         placingTower={placingTower}
         drawingRoom={drawingRoom}
@@ -340,16 +379,23 @@ const FloorPlan: React.FC = () => {
         onToggleRoomDrawing={() => setDrawingRoom(!drawingRoom)}
         onClearCanvas={clearCanvas}
       />
-      <br></br>
-      <canvas
-        ref={canvasRef}
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onMouseMove={handleMouseMove}
-        onClick={handleCanvasClick}
-        width={800}
-        height={600}
-      />
+
+      {/* Display the canvas */}
+      <div className="canvas-container">
+        <canvas
+          ref={canvasRef}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onMouseMove={handleMouseMove}
+          onClick={handleCanvasClick}
+          width={canvasSize.width}
+          height={canvasSize.height}
+          className="canvas"
+        />
+
+      </div>
+
+      {/* Display the input form for editing the selected room */}
       {selectedRoomIndex !== null && (
         <div>
           <label>Room Label:</label>
@@ -374,8 +420,10 @@ const FloorPlan: React.FC = () => {
           ))}
         </div>
       )}
+
       {/* Other components and elements can be added here */}
     </div>
+
   );
 };
 

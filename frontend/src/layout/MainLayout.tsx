@@ -1,6 +1,7 @@
 // src/layout/MainLayout.tsx
-import React from 'react';
+import React, { useState, useRef, useEffect } from "react";
 import { Link } from 'react-router-dom'; // Import Link from react-router-dom
+import './MainLayout.css'
 
 // Define the prop types
 interface MainLayoutProps {
@@ -9,15 +10,15 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
-    <div>
-      <header>
-        <h1>BlueHaven</h1>
-        <nav>
-          <Link to="/floorplan">Floor Plan Editor</Link> {/* Add a link to the Floor Plan page */}
+    <div className="container">
+      <header className="header">
+        <h1 className="logo">BlueHaven</h1>
+        <nav className="nav">
+          <Link to="/floorplan">Floor Plan Editor</Link>
         </nav>
       </header>
-      <main>{children}</main>
-      <footer>Footer Content</footer>
+      <main className="main">{children}</main>
+      <footer className="footer">© 2023 Seb Burrell</footer>
     </div>
   );
 };

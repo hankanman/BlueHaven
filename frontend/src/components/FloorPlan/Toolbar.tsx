@@ -18,7 +18,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onClearCanvas,
 }) => {
   return (
-    <div>
+    <div className="toolbar">
       <button
         onClick={onToggleTowerMode}
         className={placingTower ? "active-button" : ""}
