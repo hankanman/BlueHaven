@@ -1,3 +1,8 @@
+/**
+ * @component FloorPlan
+ * @description A component that allows users to create and edit floor plans by drawing rooms and placing towers.
+ * @returns A React functional component that renders a canvas element and various UI elements for creating and editing floor plans.
+ */
 // src/components/FloorPlan/FloorPlan.tsx
 import React, { useRef, useState, useEffect } from "react";
 import ModeIndicator from "./ModeIndicator";
@@ -9,7 +14,7 @@ import {
   adjustRoomVertices,
   getRandomColor,
 } from "./utilities";
-import "./FloorPlan.css" // Import the CSS file
+import "./FloorPlan.css"; // Import the CSS file
 
 type Tower = {
   x: number;
@@ -27,6 +32,8 @@ type Room = {
   height: number;
   label: string;
   color: string;
+  floor: number;
+  [key: string]: any;
 };
 
 const FloorPlan: React.FC = () => {
@@ -40,6 +47,7 @@ const FloorPlan: React.FC = () => {
   const [draggingVertex, setDraggingVertex] = useState<{roomIndex: number; vertexIndex: number;} | null>(null); // prettier-ignore
   const [currentRoom, setCurrentRoom] = useState<{ x: number; y: number }[]>([]); // prettier-ignore
   const [selectedRoomIndex, setSelectedRoomIndex] = useState<number | null>(null); // prettier-ignore
+
   const [towers, setTowers] = useState<Tower[]>([]);
 
   const getCanvasCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -52,7 +60,7 @@ const FloorPlan: React.FC = () => {
   };
 
   // Function to select a room
-  const handleRoomClick = (roomIndex: number) => {
+  const handleRoomSelect = (roomIndex: number) => {
     setSelectedRoomIndex(roomIndex);
   };
   // Function to handle changes to length inputs
@@ -183,6 +191,7 @@ const FloorPlan: React.FC = () => {
           width: 100,
           height: 100,
           color: getRandomColor(),
+          floor: 1
         };
 
         setRooms([...rooms, newRoom]);
@@ -260,8 +269,7 @@ const FloorPlan: React.FC = () => {
     } else {
       rooms.forEach((room, index) => {
         if (isPointInsideRoom(x, y, room)) {
-          handleRoomClick(index);
-          setSelectedRoomIndex(index);
+          handleRoomSelect(index);
         }
       });
     }
@@ -326,10 +334,10 @@ const FloorPlan: React.FC = () => {
       }
     }
   }
-  const handleLabelChange = (newLabel: string) => {
+  const handleRoomPropertyChange = (value: any, property: string) => {
     if (selectedRoomIndex !== null) {
       const updatedRooms = [...rooms];
-      updatedRooms[selectedRoomIndex].label = newLabel;
+      updatedRooms[selectedRoomIndex][property] = value;
       setRooms(updatedRooms);
     }
   };
@@ -359,11 +367,11 @@ const FloorPlan: React.FC = () => {
   useEffect(() => {
     // Call renderRooms inside a useEffect to ensure it runs when rooms change
     renderRooms();
-  }, [rooms, towers, canvasSize]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rooms, towers, canvasSize, selectedRoomIndex]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    window.addEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
     return () => {
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener("resize", handleResize);
     };
   }, []);
   return (
@@ -392,22 +400,28 @@ const FloorPlan: React.FC = () => {
           height={canvasSize.height}
           className="canvas"
         />
-
       </div>
 
       {/* Display the input form for editing the selected room */}
       {selectedRoomIndex !== null && (
-        <div>
-          <label>Room Label:</label>
+        <div className="room-properties">
+          <div className="label">Label:</div>
           <input
             placeholder="label"
             type="text"
             value={rooms[selectedRoomIndex].label}
-            onChange={(e) => handleLabelChange(e.target.value)}
+            onChange={(e) => handleRoomPropertyChange(e.target.value, e.target.placeholder)}
+          />
+          <div className="label">Label:</div>
+          <input
+            placeholder="floor"
+            type="number"
+            value={rooms[selectedRoomIndex].floor}
+            onChange={(e) => handleRoomPropertyChange(e.target.value, e.target.placeholder)}
           />
           {rooms[selectedRoomIndex].lengths.map((length, index) => (
-            <div key={index}>
-              <label>Side {index + 1} Length:</label>
+            <div key={index} className="lengths">
+              <label>{index + 1}</label>
               <input
                 placeholder="length"
                 type="number"
@@ -420,10 +434,37 @@ const FloorPlan: React.FC = () => {
           ))}
         </div>
       )}
+      {/* Display all the rooms */}
+      <div className="room-summary">
+        <h2>All Rooms</h2>
+        {rooms.map((room, index) => (
+          <div key={index}>
+            <h3>Room {index + 1}</h3>
+            <p>Label: {room.label}</p>
+            <p>Floor: {room.floor}</p>
+            <p>Corners:</p>
+            <ul>
+              {room.vertices.map((vertex, vertexIndex) => (
+                <li key={vertexIndex}>
+                  ({vertex.x}, {vertex.y})
+                </li>
+              ))}
+            </ul>
+            <p>Walls:</p>
+            <ul>
+              {room.lengths.map((length, lengthIndex) => (
+                <li key={lengthIndex}>
+                  {lengthIndex + 1}: {length.toFixed(2)}
+                </li>
+              ))}
+            </ul>
+            <button onClick={() => handleRoomSelect(index)}>Edit Room</button>
+          </div>
+        ))}
+      </div>
 
       {/* Other components and elements can be added here */}
     </div>
-
   );
 };
 
