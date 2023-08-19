@@ -25,7 +25,7 @@
   background-color: var(--bg-color);
 }
 
-.toolbar button {
+button {
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
   background-color: var(--accent-color);
@@ -35,23 +35,39 @@
   transition: background-color 0.2s ease-in-out;
 }
 
-.toolbar button:hover {
+button:hover {
   background-color: var(--text-color);
   color: var(--accent-color);
 }
 
-.form {
+.room-properties {
   margin-top: 1rem;
+  display: grid;
+  grid-area:
+    "label label"
+    "lengths lengths"
 }
 
-.form label {
+.lengths {
+  grid-area: lengths;
+}
+
+.room-properties label {
+  display: block;
+  grid-area: "label";
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+  color: var(--text-color);
+}
+
+label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: bold;
   color: var(--text-color);
 }
 
-.form input {
+input {
   padding: 0.5rem;
   border-radius: 0.5rem;
   border: 1px solid var(--text-color);
@@ -61,7 +77,7 @@
   color: var(--text-color);
 }
 
-.form input[type="submit"] {
+input[type="submit"] {
   background-color: var(--accent-color);
   color: var(--text-color);
   border: none;
@@ -71,7 +87,7 @@
   transition: background-color 0.2s ease-in-out;
 }
 
-.form input[type="submit"]:hover {
+input[type="submit"]:hover {
   background-color: var(--text-color);
   color: var(--accent-color);
 }
